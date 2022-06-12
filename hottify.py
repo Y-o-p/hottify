@@ -1,4 +1,5 @@
-import hidden_imports
+# Is a hidden import to pyinstaller 
+import http.server
 
 import requests
 import spotipy
