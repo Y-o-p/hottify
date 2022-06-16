@@ -5,25 +5,21 @@ import requests
 import spotipy
 import keyboard
 from spotipy.oauth2 import SpotifyPKCE
+import json
 
 class Hottify():
-    previous_track = 'ctrl + alt + left'
-    next_track = 'ctrl + alt + right'
-    lower_volume = 'ctrl + alt + down'
-    raise_volume = 'ctrl + alt + up'
-    toggle_playback = 'ctrl + alt + space'
-
     def __init__(
         self, 
-        previous_track=previous_track,
-        next_track=next_track,
-        lower_volume=lower_volume,
-        raise_volume=raise_volume,
-        toggle_playback=toggle_playback
+        previous_track='ctrl + alt + left',
+        next_track='ctrl + alt + right',
+        lower_volume='ctrl + alt + down',
+        raise_volume='ctrl + alt + up',
+        toggle_playback='ctrl + alt + space'
     ):
-        self.sp = self._init_spotify()
-        keyboard.add_hotkey(previous_track, self._handle_api_call, (self.sp.previous_track,))
-        keyboard.add_hotkey(next_track, self._handle_api_call, (self.sp.next_track,))
+        self.device=None
+        self._init_spotify()
+        keyboard.add_hotkey(previous_track, self.prev_track)
+        keyboard.add_hotkey(next_track, self.next_track)
         keyboard.add_hotkey(lower_volume, self.change_volume, (-5,))
         keyboard.add_hotkey(raise_volume, self.change_volume, (5,))
         keyboard.add_hotkey(toggle_playback, self.toggle_playback)
@@ -31,19 +27,34 @@ class Hottify():
     def toggle_playback(self):
         playback_information = self._handle_api_call(self.sp.current_playback)
         if playback_information is None:
+            print("ERROR no playback information: trying to start playback anyways...")
+            self._handle_api_call(self.sp.start_playback, (self.device,))
             return
         is_playing = playback_information["is_playing"]
         if is_playing:
-            self._handle_api_call(self.sp.pause_playback)
+            self._handle_api_call(self.sp.pause_playback, (self.device,))
         else:
-            self._handle_api_call(self.sp.start_playback)
+            self._handle_api_call(self.sp.start_playback, (self.device,))
+
+    def prev_track(self):
+        self._handle_api_call(self.sp.previous_track, (self.device,))
+
+    def next_track(self):
+        self._handle_api_call(self.sp.next_track, (self.device,))
 
     def change_volume(self, amount: int):
         playback_information = self._handle_api_call(self.sp.current_playback)
         if playback_information is None:
             return
+        print(playback_information)
         current_volume = playback_information['device']['volume_percent']
-        self._handle_api_call(self.sp.volume, (current_volume + amount,))
+        self._handle_api_call(self.sp.volume, (current_volume + amount, self.device))
+
+    def set_active_device(self, device: str):
+        self.device = device
+
+    def get_possible_devices(self) -> list:
+        return self._handle_api_call(self.sp.devices)
 
     def _init_spotify(self) -> spotipy.Spotify:
         scope = "user-read-recently-played user-modify-playback-state user-read-playback-state"
@@ -51,7 +62,7 @@ class Hottify():
         redirect_uri = 'http://localhost:6969/'
 
         auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope)
-        return spotipy.Spotify(oauth_manager=auth_manager, auth_manager=auth_manager)
+        self.sp = spotipy.Spotify(oauth_manager=auth_manager, auth_manager=auth_manager)
 
     def _handle_api_call(self, func, args=(), retry_if_conn_err=True):
         try:
@@ -61,9 +72,35 @@ class Hottify():
             return None
         except requests.exceptions.ConnectionError as e:
             print(e)
-            self.sp = self._init_spotify()
+            self._init_spotify()
             if retry_if_conn_err:
                 self._handle_api_call(func, args, False)
 
 prog = Hottify()
+device_id = None
+try:
+    file = open("settings.json", "r")
+    settings = json.loads(file.read())
+    file.close()
+    device_id = settings["device_id"]
+except FileNotFoundError as err:
+    devices = prog.get_possible_devices()["devices"]
+    print(devices)
+    print(type(devices))
+    print("Available devices:")
+    for i, device in enumerate(devices):
+        print(f'[{i}]:', device['name'])
+
+    device_id = devices[int(input())]["id"]
+    content = {
+        "device_id": device_id,
+        "volume_change": 5,
+    }
+    file = open("settings.json", "w")
+    file.write(json.dumps(content))
+    file.close()
+
+print(device_id)
+prog.set_active_device(device_id)
+
 keyboard.wait('ctrl + alt + q')
