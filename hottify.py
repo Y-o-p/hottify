@@ -83,24 +83,22 @@ try:
     settings = json.loads(file.read())
     file.close()
     device_id = settings["device_id"]
+    prog.set_active_device(device_id)
 except FileNotFoundError as err:
     devices = prog.get_possible_devices()["devices"]
-    print(devices)
-    print(type(devices))
-    print("Available devices:")
-    for i, device in enumerate(devices):
-        print(f'[{i}]:', device['name'])
-
-    device_id = devices[int(input())]["id"]
-    content = {
-        "device_id": device_id,
-        "volume_change": 5,
-    }
-    file = open("settings.json", "w")
-    file.write(json.dumps(content))
-    file.close()
-
-print(device_id)
-prog.set_active_device(device_id)
+    for device in devices:
+        if device["is_active"]:
+            print(f'Found active device {device["name"]}')
+            device_id = device["id"]
+            prog.set_active_device(device_id)
+            content = {
+                "device_id": device_id,
+                "volume_change": 5,
+            }
+            file = open("settings.json", "w")
+            file.write(json.dumps(content))
+            file.close()
+        elif device == devices[-1]:
+            raise spotipy.exceptions.SpotifyException("Could not find an active device to sync with...")
 
 keyboard.wait('ctrl + alt + q')
